@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
 import 'platform/platform.dart';
 
 enum PressType {
@@ -35,7 +36,8 @@ class CustomPopupMenuController extends ChangeNotifier {
 Rect _menuRect = Rect.zero;
 
 class CustomPopupMenu extends StatefulWidget {
-  CustomPopupMenu({
+  const CustomPopupMenu({
+    super.key,
     required this.child,
     required this.menuBuilder,
     required this.pressType,
@@ -49,6 +51,8 @@ class CustomPopupMenu extends StatefulWidget {
     this.position,
     this.menuOnChange,
     this.enablePassEvent = true,
+    this.onTap,
+    this.onLongTap,
   });
 
   final Widget child;
@@ -63,13 +67,15 @@ class CustomPopupMenu extends StatefulWidget {
   final Widget Function() menuBuilder;
   final PreferredPosition? position;
   final void Function(bool)? menuOnChange;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongTap;
 
   /// Pass tap event to the widgets below the mask.
   /// It only works when [barrierColor] is transparent.
   final bool enablePassEvent;
 
   @override
-  _CustomPopupMenuState createState() => _CustomPopupMenuState();
+  State createState() => _CustomPopupMenuState();
 }
 
 class _CustomPopupMenuState extends State<CustomPopupMenu> {
@@ -81,12 +87,12 @@ class _CustomPopupMenuState extends State<CustomPopupMenu> {
 
   _showMenu() {
     Widget arrow = ClipPath(
+      clipper: _ArrowClipper(),
       child: Container(
         width: widget.arrowSize,
         height: widget.arrowSize,
         color: widget.arrowColor,
       ),
-      clipper: _ArrowClipper(),
     );
 
     _overlayEntry = OverlayEntry(
@@ -126,8 +132,8 @@ class _CustomPopupMenuState extends State<CustomPopupMenu> {
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Material(
-                        child: widget.menuBuilder(),
                         color: Colors.transparent,
+                        child: widget.menuBuilder(),
                       ),
                     ],
                   ),
@@ -152,7 +158,7 @@ class _CustomPopupMenuState extends State<CustomPopupMenu> {
             // but the passed event would trigger [showMenu] again.
             // So, we use time threshold to solve this bug.
             _canResponse = false;
-            Future.delayed(Duration(milliseconds: 300))
+            Future.delayed(const Duration(milliseconds: 300))
                 .then((_) => _canResponse = true);
           },
           child: widget.barrierColor == Colors.transparent
@@ -165,7 +171,7 @@ class _CustomPopupMenuState extends State<CustomPopupMenu> {
       },
     );
     if (_overlayEntry != null) {
-      Overlay.of(context)!.insert(_overlayEntry!);
+      Overlay.of(context).insert(_overlayEntry!);
     }
   }
 
@@ -190,13 +196,13 @@ class _CustomPopupMenuState extends State<CustomPopupMenu> {
   void initState() {
     super.initState();
     _controller = widget.controller;
-    if (_controller == null) _controller = CustomPopupMenuController();
+    _controller ??= CustomPopupMenuController();
     _controller?.addListener(_updateView);
     WidgetsBinding.instance.addPostFrameCallback((call) {
       if (mounted) {
         _childBox = context.findRenderObject() as RenderBox?;
         _parentBox =
-            Overlay.of(context)?.context.findRenderObject() as RenderBox?;
+            Overlay.of(context).context.findRenderObject() as RenderBox?;
       }
     });
   }
@@ -211,6 +217,7 @@ class _CustomPopupMenuState extends State<CustomPopupMenu> {
   @override
   Widget build(BuildContext context) {
     var child = Material(
+      color: Colors.transparent,
       child: InkWell(
         hoverColor: Colors.transparent,
         focusColor: Colors.transparent,
@@ -218,26 +225,39 @@ class _CustomPopupMenuState extends State<CustomPopupMenu> {
         highlightColor: Colors.transparent,
         child: widget.child,
         onTap: () {
-          if (widget.pressType == PressType.singleClick && _canResponse) {
-            _controller?.showMenu();
+          if (_canResponse) {
+            if (widget.pressType == PressType.singleClick) {
+              _controller?.showMenu();
+            } else {
+              widget.onTap?.call();
+            }
           }
         },
         onLongPress: () {
-          if (widget.pressType == PressType.longPress && _canResponse) {
-            _controller?.showMenu();
+          if (_canResponse) {
+            if (widget.pressType == PressType.longPress) {
+              _controller?.showMenu();
+            } else {
+              widget.onLongTap?.call();
+            }
           }
         },
       ),
-      color: Colors.transparent,
     );
     if (Platform.isIOS) {
       return child;
     } else {
-      return WillPopScope(
-        onWillPop: () {
+      return PopScope(
+        onPopInvokedWithResult: (didPop, $) {
+          if (didPop) {
+            return;
+          }
           _hideMenu();
-          return Future.value(true);
         },
+        // onWillPop: () {
+        //   _hideMenu();
+        //   return Future.value(true);
+        // },
         child: child,
       );
     }
@@ -276,8 +296,8 @@ class _MenuLayoutDelegate extends MultiChildLayoutDelegate {
   void performLayout(Size size) {
     Size contentSize = Size.zero;
     Size arrowSize = Size.zero;
-    Offset contentOffset = Offset(0, 0);
-    Offset arrowOffset = Offset(0, 0);
+    Offset contentOffset = const Offset(0, 0);
+    Offset arrowOffset = const Offset(0, 0);
 
     double anchorCenterX = anchorOffset.dx + anchorSize.width / 2;
     double anchorTopY = anchorOffset.dy;
@@ -397,7 +417,7 @@ class _MenuLayoutDelegate extends MultiChildLayoutDelegate {
         _MenuLayoutId.arrow,
         isBottom
             ? Offset(arrowOffset.dx, arrowOffset.dy + 0.1)
-            : Offset(-100, 0),
+            : const Offset(-100, 0),
       );
     }
     if (hasChild(_MenuLayoutId.downArrow)) {
@@ -405,7 +425,7 @@ class _MenuLayoutDelegate extends MultiChildLayoutDelegate {
         _MenuLayoutId.downArrow,
         !isBottom
             ? Offset(arrowOffset.dx, arrowOffset.dy - 0.1)
-            : Offset(-100, 0),
+            : const Offset(-100, 0),
       );
     }
   }
